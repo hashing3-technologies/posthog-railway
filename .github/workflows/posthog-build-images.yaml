@@ -1,0 +1,135 @@
+name: PostHog — build & publish images (HASHING3)
+
+# Builda as 19 imagens do template PostHog self-hosted e publica no GHCR da
+# org HASHING3. Diferenças vs template-base Hexatare:
+#   - registry próprio (ghcr.io/hashing3-technologies/posthog-railway)
+#   - SeaweedFS + MinIO removidos (object storage 100% Backblaze B2 — ADR-015)
+#   - imagens FROM cravadas por digest sha256 nos Dockerfiles (ADR-014);
+#     a tag de saída usa o commit-âncora (não :latest mutável)
+#   - o digest de cada imagem publicada é emitido no job summary, para o
+#     template Railway consumir POR DIGEST.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "posthog/dockerfiles/**"
+      - "posthog/images.lock"
+      - ".github/workflows/posthog-build-images.yaml"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/hashing3-technologies/posthog-railway
+  # Commit-âncora do PostHog (mesmo do images.lock). Controla o checkout do
+  # source para os COPY de config/compose. Atualizar em conjunto com o lock.
+  POSTHOG_APP_TAG: 9373a2b55081d3e711ad58bca060a6a9ab5d41a5
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - capture
+          - clickhouse
+          - cyclotron-janitor
+          - cymbal
+          - db
+          - feature-flags
+          - kafka-init
+          - kafka
+          - livestream
+          - plugins
+          - property-defs-rs
+          - proxy
+          - redis7
+          - replay-capture
+          - temporal-django-worker
+          - temporal
+          - web
+          - worker
+          - zookeeper
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clone PostHog source @ POSTHOG_APP_TAG
+        working-directory: ./posthog
+        run: |
+          git clone --filter=blob:none https://github.com/PostHog/posthog.git ./posthog
+          git -C ./posthog checkout "${POSTHOG_APP_TAG}"
+
+      - name: Download GeoIP database
+        working-directory: ./posthog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates brotli
+          mkdir -p ./share
+          if [ ! -f ./share/GeoLite2-City.mmdb ]; then
+            curl -L 'https://mmdbcdn.posthog.net/' --http1.1 | brotli --decompress --output=./share/GeoLite2-City.mmdb
+            echo "{\"date\": \"$(date +%Y-%m-%d)\"}" > ./share/GeoLite2-City.json
+            chmod 644 ./share/GeoLite2-City.mmdb ./share/GeoLite2-City.json
+          fi
+
+      - name: Write entrypoint/compose scripts
+        working-directory: ./posthog
+        run: |
+          rm -rf compose && mkdir -p compose
+          cat > compose/start <<'EOF'
+          #!/bin/bash
+          ./compose/wait
+          ./bin/migrate
+          ./bin/docker-server
+          EOF
+          cat > compose/temporal-django-worker <<'EOF'
+          #!/bin/bash
+          ./bin/temporal-django-worker
+          EOF
+          cat > compose/wait <<'EOF'
+          #!/usr/bin/env python3
+          import socket, time
+          def loop():
+              print("Waiting for ClickHouse and Postgres to be ready")
+              try:
+                  with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                      s.connect(('clickhouse', 9000))
+                  print("Clickhouse is ready")
+                  with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                      s.connect(('db', 5432))
+                  print("Postgres is ready")
+              except ConnectionRefusedError:
+                  time.sleep(5); loop()
+          loop()
+          EOF
+          chmod +x compose/start compose/temporal-django-worker compose/wait
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push ${{ matrix.image }}
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./posthog
+          file: ./posthog/dockerfiles/${{ matrix.image }}.Dockerfile
+          push: true
+          # tag = commit-âncora (imutável por convenção; não usar :latest).
+          # O consumo no template Railway é por digest (abaixo no summary).
+          tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ env.POSTHOG_APP_TAG }}
+
+      - name: Emit published digest
+        run: |
+          echo "| ${{ matrix.image }} | \`${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}\` |" >> "$GITHUB_STEP_SUMMARY"

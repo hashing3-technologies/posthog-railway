@@ -1,0 +1,1 @@
+FROM ghcr.io/posthog/posthog/property-defs-rs:master@sha256:c6b707a4659973dd606fcabf889e5765b7d74577e3c7261fd9b07ef706a89137

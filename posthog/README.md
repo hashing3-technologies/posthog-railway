@@ -3,9 +3,26 @@
 Template Railway para subir **PostHog self-hosted** (analytics de produto open-source) com
 deploy 1-clique. Object storage **100% no Backblaze B2** (sem storage local).
 
-> **Status: 🚧 Em construção (Fase A).** Esta pasta é o scaffold inicial. A composição do
-> template (Dockerfiles com digest pinning, workflow de imagens próprio, `.env.example`
-> documentado e `docs/`) é a próxima leva. Este README é placeholder honesto, não o overview final.
+> **Status: ✅ Imagens prontas (Fase A).** Dockerfiles com digest pinning, workflow de
+> build próprio (registry HASHING3), `images.lock`, `.env.example` e `docs/` implementados.
+> Pendente: composição + publicação do template na Railway e smoke test do Session
+> Replay → B2 (Fase 3), depois deploy no cliente MMO (Fase B).
+
+## Estrutura desta pasta
+
+| Caminho | O que é |
+|---|---|
+| [`dockerfiles/`](dockerfiles/) | 19 Dockerfiles, cada `FROM` cravado por `@sha256` |
+| [`images.lock`](images.lock) | Fonte de verdade do digest pinning (imagem → digest + origem) |
+| [`.env.example`](.env.example) | Referência de env vars (storage B2 verificado + wiring) |
+| [`tools/resolve-digests.sh`](tools/resolve-digests.sh) | Re-resolve digests da fonte primária / audita drift do lock |
+| [`docs/inventario-base.md`](docs/inventario-base.md) | Auditoria do template-base + as 4 falhas corrigidas |
+| `../.github/workflows/posthog-build-images.yaml` | Build & publish das 19 imagens no GHCR |
+
+**Reprodutibilidade (ADR-014):** todo `FROM` é por digest `sha256` (nunca tag
+mutável). Para atualizar a âncora, rode `tools/resolve-digests.sh` (re-resolve da
+fonte; nunca cravar digest de memória) e atualize `images.lock` + o workflow em
+conjunto.
 
 ## Arquitetura (~19 serviços — variante do template-base, PostHog moderno)
 
@@ -63,7 +80,9 @@ SESSION_RECORDING_V2_S3_BUCKET=<your-bucket>
 ## Roadmap de construção
 
 - [x] Scaffold do repositório
-- [ ] Dockerfiles com digest pinning (commit SHA auditado do upstream PostHog) → registry HASHING3
-- [ ] Workflow de imagens próprio (digest sha256)
-- [ ] `.env.example` completo + `docs/` (setup, operação, custo, contingência storage)
-- [ ] Composição e publicação do template na Railway + smoke test do Session Replay → B2
+- [x] Dockerfiles com digest pinning (`@sha256` resolvido da fonte primária) → registry HASHING3
+- [x] Workflow de imagens próprio (publica por commit-âncora + emite digest)
+- [x] `images.lock` + `resolve-digests.sh` (auditoria de drift)
+- [x] `.env.example` (storage B2 verificado) + `docs/inventario-base.md` (falhas do base)
+- [ ] Composição e publicação do template na Railway + smoke test do Session Replay → B2 (Fase 3)
+- [ ] Deploy no cliente MMO (Fase B)

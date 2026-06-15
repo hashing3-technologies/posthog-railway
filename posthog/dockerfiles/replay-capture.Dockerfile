@@ -1,0 +1,1 @@
+FROM ghcr.io/posthog/posthog/capture:master@sha256:4d87b678fd8818c08dd4029695671c3c21070703f23487b45fbf7ca4f4b5991b
