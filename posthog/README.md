@@ -39,6 +39,23 @@ o rate limit de pull anônimo (`429`). Configure no repo
 O GHCR (imagens `posthog/*` e destino) usa o `GITHUB_TOKEN` automático — não
 precisa de secret.
 
+### Supply chain / segurança
+
+Três camadas, e o que cada uma garante (e o que **não** garante):
+
+- **Digest pinning** (`@sha256`) — **imutabilidade**: a imagem não muda sob a tag.
+- **Trivy** no CI — scan de CVE da imagem publicada. Dois passos: *relatório*
+  (CRITICAL/HIGH/MEDIUM, não bloqueia) + *gate* (falha o build só em **CRITICAL
+  com correção disponível** — não trava em CVE upstream sem patch).
+- **Provenance SLSA** — o build gera `--attest type=provenance,mode=max`; as
+  imagens que **nós** publicamos saem com proveniência assinada via OIDC do
+  GitHub (verificável por `cosign` no consumo).
+
+> **cosign nas imagens base não se aplica:** verificado em 2026-06-15 — PostHog,
+> Docker Official Images, ClickHouse et al. **não** publicam assinatura cosign
+> (sem `.sig` nem referrers). Forçar `cosign verify` sobre imagem não-assinada só
+> quebraria o build. A garantia de "imagem não mudou" vem do **digest pin**.
+
 ## Arquitetura (~19 serviços — variante do template-base, PostHog moderno)
 
 O PostHog atual **não** é o "hobby" de 5 serviços. Esta variante (base: Hexatare/Railway) traz:
