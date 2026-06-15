@@ -1,0 +1,1 @@
+FROM ghcr.io/posthog/posthog/cyclotron-janitor:master@sha256:df44c32b8e2c97253c79e7dd082960e53e6c49c164865885807088de595c2c23

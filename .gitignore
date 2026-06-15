@@ -12,3 +12,8 @@ Thumbs.db
 dist/
 build/
 node_modules/
+
+# PostHog template — artefatos gerados em build (clonados/baixados pelo workflow)
+posthog/posthog/
+posthog/compose/
+posthog/share/

@@ -1,0 +1,53 @@
+# images.lock — PostHog self-hosted (template HASHING3)
+#
+# Fonte de verdade do digest pinning (ADR-014). Cada imagem upstream consumida
+# pelos Dockerfiles é cravada por digest sha256 imutável — nunca por tag mutável.
+#
+# Formato:  <serviço>  <referência-com-digest>  <origem-da-tag>
+#
+# Como foi resolvido: digests obtidos da fonte primária (registry OCI API,
+# header Docker-Content-Digest) em 2026-06-15. Para re-resolver/atualizar,
+# rode tools/resolve-digests.sh (não inventar digest — ver anti-pattern
+# premissa-de-fonte-secundaria-nao-verificada no repo mmo).
+#
+# Âncora PostHog (web/worker/plugins/temporal-django-worker):
+#   commit  = 9373a2b55081d3e711ad58bca060a6a9ab5d41a5
+#   imagem  = ghcr.io/posthog/posthog@sha256:2472...
+#
+# ATENÇÃO (skew de versão herdado do upstream): a imagem Django principal
+# (posthog/posthog) é publicada por commit SHA, mas os componentes Rust/Go
+# (capture, cymbal, feature-flags, livestream, property-defs-rs,
+# cyclotron-janitor) só existem na tag rolling ":master" — o upstream NÃO
+# publica essas sub-imagens por commit SHA (verificado: capture:<sha> = 404).
+# Aqui cada ":master" foi cravado pelo digest do snapshot de 2026-06-15, o que
+# torna o build reprodutível, mas NÃO garante que os componentes sejam do mesmo
+# commit que o "web". Ao atualizar a âncora, re-resolver TODOS juntos e validar.
+
+# ── PostHog Django (âncora por commit) ──────────────────────────────────────
+web                       ghcr.io/posthog/posthog@sha256:24728274ac746f2a56a0568721cc136f2fcb4c8e8e8b617fa3060f126e4e215d    commit:9373a2b
+worker                    ghcr.io/posthog/posthog@sha256:24728274ac746f2a56a0568721cc136f2fcb4c8e8e8b617fa3060f126e4e215d    commit:9373a2b
+plugins                   ghcr.io/posthog/posthog@sha256:24728274ac746f2a56a0568721cc136f2fcb4c8e8e8b617fa3060f126e4e215d    commit:9373a2b
+temporal-django-worker    ghcr.io/posthog/posthog@sha256:24728274ac746f2a56a0568721cc136f2fcb4c8e8e8b617fa3060f126e4e215d    commit:9373a2b
+
+# ── Componentes Rust/Go (snapshot de :master, skew possível vs web) ──────────
+capture                   ghcr.io/posthog/posthog/capture:master@sha256:4d87b678fd8818c08dd4029695671c3c21070703f23487b45fbf7ca4f4b5991b              master@2026-06-15
+replay-capture            ghcr.io/posthog/posthog/capture:master@sha256:4d87b678fd8818c08dd4029695671c3c21070703f23487b45fbf7ca4f4b5991b              master@2026-06-15
+cyclotron-janitor         ghcr.io/posthog/posthog/cyclotron-janitor:master@sha256:df44c32b8e2c97253c79e7dd082960e53e6c49c164865885807088de595c2c23     master@2026-06-15
+cymbal                    ghcr.io/posthog/posthog/cymbal:master@sha256:aff8d74ef86c7b86b1724dccfdea7745d19d0e57cdfada49b363438e1e7bc206              master@2026-06-15
+feature-flags             ghcr.io/posthog/posthog/feature-flags:master@sha256:63e744716c6826068b09c29f30cf0c4e65d7a3614b84e185488ebec760fa3d30       master@2026-06-15
+livestream                ghcr.io/posthog/posthog/livestream:master@sha256:28c40d3a7444d3ddbe64c5fbe3beba99937154cf1c3f960cfbf714892db827eb          master@2026-06-15
+property-defs-rs          ghcr.io/posthog/posthog/property-defs-rs:master@sha256:c6b707a4659973dd606fcabf889e5765b7d74577e3c7261fd9b07ef706a89137     master@2026-06-15
+
+# ── Infra (tag semântica + digest) ──────────────────────────────────────────
+clickhouse                clickhouse/clickhouse-server:25.8.12.129@sha256:356f0bbb1c4bade74ca32637e944d8f42109d18f13c51f991ba334f0f0749d20            tag:25.8.12.129
+db                        postgres:15.12-alpine@sha256:ef9d1517df69c4d27dbb9ddcec14f431a2442628603f4e9daa429b92ae6c3cd1                              tag:15.12-alpine
+kafka-init                docker.redpanda.com/redpandadata/redpanda:v25.1.9@sha256:8f7e9e4c1422baaa1a5e2a6c6c668cfe05442cb3cb476542c7dff61725e6fe31  tag:v25.1.9
+kafka                     confluentinc/cp-kafka:7.7.7@sha256:da2cad63aef7c80a68d46eb99f85fdaaed09dcf453e2a91ea63ffe3f9815ec00                       tag:7.7.7
+proxy                     caddy:2-alpine@sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2                                     tag:2-alpine (era :latest no base)
+redis7                    redis:7.2-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c214fdee2d836197b4be8e9904420762cd8                                   tag:7.2-alpine
+temporal                  temporalio/auto-setup:1.20.0@sha256:c2deeb6706ae80f91bbf61b22a5442e240f25c901cfffbba857eb8bff80e0a6d                       tag:1.20.0
+zookeeper                 zookeeper:3.7.0@sha256:341cf7411329fd5a3ea37640073e7b8f063175168c0f0d99179e9606e035a80c                                    tag:3.7.0
+
+# ── Removidos vs template-base (storage 100% Backblaze B2, ADR-015) ──────────
+# seaweedfs       chrislusf/seaweedfs:4.03                 → REMOVIDO (SESSION_RECORDING_V2_S3_* aponta p/ B2)
+# objectstorage   minio/minio:RELEASE.2025-04-22...        → REMOVIDO (OBJECT_STORAGE_* aponta p/ B2)
