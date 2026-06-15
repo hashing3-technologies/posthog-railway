@@ -1,28 +1,26 @@
-name: PostHog — build & publish images (HASHING3)
+name: build & publish images (HASHING3)
 
-# Builda as 19 imagens do template PostHog self-hosted e publica no GHCR da
-# org HASHING3. Diferenças vs template-base Hexatare:
+# Builda as 19 imagens do PostHog self-hosted e publica no GHCR da org HASHING3.
+# Repo dedicado, Dockerfiles na raiz (padrão Hexatare). Diferenças vs base:
 #   - registry próprio (ghcr.io/hashing3-technologies/posthog-railway)
 #   - SeaweedFS + MinIO removidos (object storage 100% Backblaze B2 — ADR-015)
-#   - imagens FROM cravadas por digest sha256 nos Dockerfiles (ADR-014);
-#     a tag de saída usa o commit-âncora (não :latest mutável)
-#   - o digest de cada imagem publicada é emitido no job summary, para o
-#     template Railway consumir POR DIGEST.
+#   - FROM cravado por digest sha256 nos Dockerfiles (ADR-014; ver images.lock)
+#   - Trivy report-only + SARIF no Security tab; digest publicado no job summary.
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "posthog/dockerfiles/**"
-      - "posthog/images.lock"
-      - ".github/workflows/posthog-build-images.yaml"
+      - "*.Dockerfile"
+      - "images.lock"
+      - ".github/workflows/build-images.yaml"
 
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/hashing3-technologies/posthog-railway
   # Commit-âncora do PostHog (mesmo do images.lock). Controla o checkout do
-  # source para os COPY de config/compose. Atualizar em conjunto com o lock.
+  # source para os COPY de config/compose. Atualizar junto com o lock.
   POSTHOG_APP_TAG: 9373a2b55081d3e711ad58bca060a6a9ab5d41a5
 
 jobs:
@@ -61,13 +59,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Clone PostHog source @ POSTHOG_APP_TAG
-        working-directory: ./posthog
         run: |
           git clone --filter=blob:none https://github.com/PostHog/posthog.git ./posthog
           git -C ./posthog checkout "${POSTHOG_APP_TAG}"
 
       - name: Download GeoIP database
-        working-directory: ./posthog
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends curl ca-certificates brotli
@@ -79,7 +75,6 @@ jobs:
           fi
 
       - name: Write entrypoint/compose scripts
-        working-directory: ./posthog
         run: |
           rm -rf compose && mkdir -p compose
           cat > compose/start <<'EOF'
@@ -134,8 +129,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: ./posthog
-          file: ./posthog/dockerfiles/${{ matrix.image }}.Dockerfile
+          context: .
+          file: ./${{ matrix.image }}.Dockerfile
           push: true
           # tag = commit-âncora (imutável por convenção; não usar :latest).
           # O consumo no template Railway é por digest (abaixo no summary).
