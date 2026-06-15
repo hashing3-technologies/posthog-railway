@@ -31,6 +31,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write   # upload do SARIF do Trivy para o Security tab
     strategy:
       fail-fast: false
       matrix:
@@ -140,14 +141,12 @@ jobs:
           # O consumo no template Railway é por digest (abaixo no summary).
           tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ env.POSTHOG_APP_TAG }}
 
-      # Scan de CVE da imagem publicada (Trivy). Dois passos:
-      #   1) RELATÓRIO — lista CRITICAL/HIGH/MEDIUM, NÃO bloqueia (visibilidade).
-      #   2) GATE — falha o job só em CRITICAL COM correção disponível
-      #      (ignore-unfixed). Imagens upstream (PostHog/ClickHouse/etc.) trazem
-      #      CVEs sem patch que não controlamos; bloquear nelas deixaria o CI
-      #      vermelho à toa. Para apertar, mover HIGH para o gate depois.
-      # Action pinada por SHA (v0.36.0), mesma disciplina dos Dockerfiles.
-      - name: Trivy — relatório (não bloqueia)
+      # Scan de CVE da imagem publicada (Trivy) — REPORT-ONLY.
+      # Política: o template empacota imagens de terceiros (PostHog + infra) cujas
+      # CVEs upstream NÃO controlamos; um gate hard travaria o build à toa. Então
+      # o scan dá VISIBILIDADE (log + Security tab via SARIF) sem bloquear. A
+      # triagem/bump das bases é processo, não gate. Actions pinadas por SHA.
+      - name: Trivy — relatório no log (não bloqueia)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_USERNAME: ${{ github.actor }}
@@ -159,18 +158,24 @@ jobs:
           exit-code: "0"
           vuln-type: os,library
 
-      - name: Trivy — gate (CRITICAL corrigível bloqueia)
+      - name: Trivy — gera SARIF (CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
-          format: table
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
           vuln-type: os,library
+
+      - name: Sobe SARIF para o Security tab
+        uses: github/codeql-action/upload-sarif@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: ${{ matrix.image }}   # separa os achados por imagem
 
       - name: Emit published digest
         run: |

@@ -44,9 +44,11 @@ precisa de secret.
 Três camadas, e o que cada uma garante (e o que **não** garante):
 
 - **Digest pinning** (`@sha256`) — **imutabilidade**: a imagem não muda sob a tag.
-- **Trivy** no CI — scan de CVE da imagem publicada. Dois passos: *relatório*
-  (CRITICAL/HIGH/MEDIUM, não bloqueia) + *gate* (falha o build só em **CRITICAL
-  com correção disponível** — não trava em CVE upstream sem patch).
+- **Trivy** no CI — scan de CVE **report-only**: relatório no log
+  (CRITICAL/HIGH/MEDIUM) + SARIF no **Security tab** (CRITICAL/HIGH, por imagem).
+  **Não bloqueia** o build: o template empacota imagens de terceiros cujas CVEs
+  upstream não controlamos; um gate hard travaria o build à toa. A triagem/bump
+  das bases é processo (acompanhar o Security tab), não gate.
 - **Provenance SLSA** — o build gera `--attest type=provenance,mode=max`; as
   imagens que **nós** publicamos saem com proveniência assinada via OIDC do
   GitHub (verificável por `cosign` no consumo).
