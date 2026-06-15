@@ -24,6 +24,21 @@ mutável). Para atualizar a âncora, rode `tools/resolve-digests.sh` (re-resolve
 fonte; nunca cravar digest de memória) e atualize `images.lock` + o workflow em
 conjunto.
 
+### Secrets necessários no CI
+
+O workflow puxa imagens base do **Docker Hub** (redpanda, postgres, cp-kafka,
+caddy, redis, temporalio, zookeeper, clickhouse). Sem autenticação o runner bate
+o rate limit de pull anônimo (`429`). Configure no repo
+(**Settings → Secrets and variables → Actions**):
+
+| Secret | Valor |
+|---|---|
+| `DOCKERHUB_USERNAME` | usuário do Docker Hub |
+| `DOCKERHUB_TOKEN` | Personal Access Token do Docker Hub (escopo *Public Repo Read*) |
+
+O GHCR (imagens `posthog/*` e destino) usa o `GITHUB_TOKEN` automático — não
+precisa de secret.
+
 ## Arquitetura (~19 serviços — variante do template-base, PostHog moderno)
 
 O PostHog atual **não** é o "hobby" de 5 serviços. Esta variante (base: Hexatare/Railway) traz:
