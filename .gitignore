@@ -8,12 +8,7 @@
 Thumbs.db
 *.log
 
-# Build artifacts
-dist/
-build/
-node_modules/
-
-# PostHog template — artefatos gerados em build (clonados/baixados pelo workflow)
-posthog/posthog/
-posthog/compose/
-posthog/share/
+# Artefatos gerados em build (clonados/baixados pelo workflow)
+/posthog/
+/compose/
+/share/
