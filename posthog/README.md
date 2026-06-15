@@ -63,7 +63,7 @@ SESSION_RECORDING_V2_S3_BUCKET=<your-bucket>
 ## Roadmap de construção
 
 - [x] Scaffold do repositório
-- [ ] Dockerfiles com digest pinning (release estável do PostHog) → registry HASHING3
+- [ ] Dockerfiles com digest pinning (commit SHA auditado do upstream PostHog) → registry HASHING3
 - [ ] Workflow de imagens próprio (digest sha256)
 - [ ] `.env.example` completo + `docs/` (setup, operação, custo, contingência storage)
 - [ ] Composição e publicação do template na Railway + smoke test do Session Replay → B2
