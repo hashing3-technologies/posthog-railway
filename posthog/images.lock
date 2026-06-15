@@ -41,7 +41,7 @@ property-defs-rs          ghcr.io/posthog/posthog/property-defs-rs:master@sha256
 # ── Infra (tag semântica + digest) ──────────────────────────────────────────
 clickhouse                clickhouse/clickhouse-server:25.8.12.129@sha256:356f0bbb1c4bade74ca32637e944d8f42109d18f13c51f991ba334f0f0749d20            tag:25.8.12.129
 db                        postgres:15.12-alpine@sha256:ef9d1517df69c4d27dbb9ddcec14f431a2442628603f4e9daa429b92ae6c3cd1                              tag:15.12-alpine
-kafka-init                docker.redpanda.com/redpandadata/redpanda:v25.1.9@sha256:8f7e9e4c1422baaa1a5e2a6c6c668cfe05442cb3cb476542c7dff61725e6fe31  tag:v25.1.9
+kafka-init                redpandadata/redpanda:v25.1.9@sha256:8f7e9e4c1422baaa1a5e2a6c6c668cfe05442cb3cb476542c7dff61725e6fe31              tag:v25.1.9 (Docker Hub direto; proxy docker.redpanda.com tinha rate limit menor)
 kafka                     confluentinc/cp-kafka:7.7.7@sha256:da2cad63aef7c80a68d46eb99f85fdaaed09dcf453e2a91ea63ffe3f9815ec00                       tag:7.7.7
 proxy                     caddy:2-alpine@sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2                                     tag:2-alpine (era :latest no base)
 redis7                    redis:7.2-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c214fdee2d836197b4be8e9904420762cd8                                   tag:7.2-alpine
