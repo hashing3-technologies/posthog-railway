@@ -1,9 +1,9 @@
 name: build & publish images (HASHING3)
 
 # Builda as 19 imagens do PostHog self-hosted e publica no GHCR da org HASHING3.
-# Repo dedicado, Dockerfiles na raiz (padrão Hexatare). Diferenças vs base:
+# Repo dedicado, Dockerfiles na raiz. Características:
 #   - registry próprio (ghcr.io/hashing3-technologies/posthog-railway)
-#   - SeaweedFS + MinIO removidos (object storage 100% Backblaze B2 — ADR-015)
+#   - object storage 100% Backblaze B2, sem storage local (ADR-015)
 #   - FROM cravado por digest sha256 nos Dockerfiles (ADR-014; ver images.lock)
 #   - Trivy report-only + SARIF no Security tab; digest publicado no job summary.
 
