@@ -48,6 +48,6 @@ redis7                    redis:7.2-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c
 temporal                  temporalio/auto-setup:1.20.0@sha256:c2deeb6706ae80f91bbf61b22a5442e240f25c901cfffbba857eb8bff80e0a6d                       tag:1.20.0
 zookeeper                 zookeeper:3.7.0@sha256:341cf7411329fd5a3ea37640073e7b8f063175168c0f0d99179e9606e035a80c                                    tag:3.7.0
 
-# ── Removidos vs template-base (storage 100% Backblaze B2, ADR-015) ──────────
+# ── Sem storage local (object storage 100% Backblaze B2, ADR-015) ────────────
 # seaweedfs       chrislusf/seaweedfs:4.03                 → REMOVIDO (SESSION_RECORDING_V2_S3_* aponta p/ B2)
 # objectstorage   minio/minio:RELEASE.2025-04-22...        → REMOVIDO (OBJECT_STORAGE_* aponta p/ B2)

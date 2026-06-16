@@ -1,19 +1,20 @@
 # PostHog self-hosted — Railway Template (HASHING3)
 
-Template Railway para subir **PostHog self-hosted** (analytics de produto open-source).
-Variante HASHING3 do template-base [`Hexatare/posthog-railway-template`](https://github.com/Hexatare/posthog-railway-template),
-com **object storage 100% no Backblaze B2**, imagens **pinadas por digest** e CI próprio.
+Template Railway, mantido pela **HASHING3 Technologies**, para subir **PostHog
+self-hosted** (analytics de produto open-source) em arquitetura de produção:
+~19 serviços isolados, **object storage 100% no Backblaze B2**, imagens
+**pinadas por digest `sha256`** e pipeline de build próprio.
 
-> **Repo dedicado** (1 template = 1 repo, Dockerfiles na raiz — padrão Railway).
-> A **composição dos serviços** (os ~19 containers, env, volumes, ligações) é
-> definida na **plataforma Railway** e publicada como template; este repo fornece
-> os Dockerfiles → o workflow builda → as imagens vão pro GHCR → o template usa
-> as imagens.
+> **Repo dedicado** (1 template = 1 repo, Dockerfiles na raiz). A **composição
+> dos serviços** (os ~19 containers, env, volumes, ligações) é definida na
+> **plataforma Railway** e publicada como template; este repo fornece os
+> Dockerfiles → o pipeline builda → as imagens vão pro GHCR → o template usa as
+> imagens (por digest).
 
 ## Arquitetura — ~19 serviços (cada um é um container)
 
-O PostHog moderno **não** é o "hobby" de 5 serviços; é uma arquitetura de
-múltiplas tecnologias, cada uma rodando como serviço isolado na Railway:
+O PostHog moderno é uma arquitetura de múltiplas tecnologias, cada uma rodando
+como serviço isolado na Railway:
 
 - **App:** `web`, `worker`, `plugins`, `temporal-django-worker`
 - **Captura/processamento (Rust/Go):** `capture`, `replay-capture`, `feature-flags`,
@@ -22,7 +23,7 @@ múltiplas tecnologias, cada uma rodando como serviço isolado na Railway:
 - **Streaming:** `kafka`, `zookeeper`, `kafka-init`
 - **Orquestração:** `temporal`
 - **Proxy:** `proxy` (Caddy)
-- **Object storage:** **externo (Backblaze B2)** — SeaweedFS e MinIO do base **removidos**
+- **Object storage:** **externo (Backblaze B2)** — sem storage local embarcado
 
 > **Footprint:** ClickHouse + Kafka + Zookeeper + Temporal são *always-on*.
 > Baseline oficial de self-host: ~4 vCPU / 16 GB RAM / 30 GB.
@@ -31,7 +32,7 @@ múltiplas tecnologias, cada uma rodando como serviço isolado na Railway:
 
 Os Dockerfiles dependem de arquivos do **source-code do PostHog** (configs, scripts
 `compose`, GeoIP) que não ficam no repo — por isso o build é **pré-buildado** no
-CI (não na Railway): o workflow clona o source no commit-âncora, gera os scripts,
+CI (não na Railway): o pipeline clona o source no commit-âncora, gera os scripts,
 e publica as 19 imagens em `ghcr.io/hashing3-technologies/posthog-railway/*`. A
 Railway então consome essas imagens prontas (por digest).
 
@@ -39,9 +40,9 @@ Railway então consome essas imagens prontas (por digest).
 |---|---|
 | `*.Dockerfile` (raiz) | 19 Dockerfiles, cada `FROM` cravado por `@sha256` |
 | `images.lock` | Fonte de verdade do digest pinning (imagem → digest + origem) |
-| `.env.example` | Referência de env vars (storage B2 verificado + wiring) |
+| `.env.example` | Referência de env vars (storage B2 + wiring de serviços) |
 | `tools/resolve-digests.sh` | Re-resolve digests da fonte primária / audita drift |
-| `docs/inventario-base.md` | Auditoria do template-base + as 4 falhas corrigidas |
+| `docs/arquitetura.md` | Decisões de arquitetura do template (serviços, storage, pinning) |
 | `.github/workflows/build-images.yaml` | Build & publish das 19 imagens no GHCR |
 
 **Reprodutibilidade (ADR-014):** todo `FROM` é por digest `sha256` (nunca tag
@@ -50,7 +51,7 @@ fonte; nunca cravar digest de memória) e atualize `images.lock` + o workflow.
 
 ## Object storage — 100% Backblaze B2 (ADR-015)
 
-Substitui SeaweedFS + MinIO. `OBJECT_STORAGE_*` (exports/cache) +
+Sem storage local: `OBJECT_STORAGE_*` (exports/cache) +
 `SESSION_RECORDING_V2_S3_*` (Session Replay, **ativo**) + `cymbal` (error
 tracking) apontam para o B2 (S3-compatible). Detalhes e notas de compatibilidade
 no [`.env.example`](.env.example). **Gate de aceite:** smoke test do replay → B2.
