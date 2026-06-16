@@ -1,0 +1,31 @@
+# Config do livestream no formato NOVO (seção consumers.*) exigido pela imagem
+# `:master`. O `configs-hobby.yml` do commit-âncora 9373a2b só tem `kafka.*`
+# (formato antigo) -> a imagem master falha com
+# "Failed to load config: consumers.event.brokers must be set".
+# Estrutura espelha docker/livestream/configs-hobby.yml da master do PostHog.
+# (JWT vem da env LIVESTREAM_JWT_SECRET, não deste arquivo.)
+debug: false
+kafka:
+  brokers: 'kafka:9092'
+  topic: 'events_plugin_ingestion'
+  group_id: 'livestream'
+  security_protocol: 'PLAINTEXT'
+  session_recording_enabled: true
+  session_recording_security_protocol: 'PLAINTEXT'
+consumers:
+  event:
+    enabled: true
+    brokers: 'kafka:9092'
+    topic: 'events_plugin_ingestion'
+    security_protocol: 'PLAINTEXT'
+    group_id: 'livestream'
+  session_recording:
+    enabled: true
+    brokers: 'kafka:9092'
+    topic: 'session_recording_snapshot_item_events'
+    security_protocol: 'PLAINTEXT'
+    group_id: 'livestream-session-recordings'
+  notification:
+    enabled: false
+mmdb:
+  path: 'GeoLite2-City.mmdb'
