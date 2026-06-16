@@ -1,16 +1,16 @@
-# docker-compose.yml — PostHog self-hosted (HASHING3) para import na Railway
+# docker-compose.yml — PostHog self-hosted (HASHING3) for import into Railway
 # ─────────────────────────────────────────────────────────────────────────────
-# USO: arraste este arquivo no canvas do projeto Railway (drag-and-drop). A
-# Railway cria os 19 serviços de uma vez (staged changes). Requer:
-#   - os 19 packages GHCR PÚBLICOS (senão a Railway não puxa as imagens)
-#   - preencher os <PLACEHOLDERS> (DOMAIN, B2, segredos) após o import
+# USAGE: drag this file onto the Railway project canvas (drag-and-drop).
+# Railway creates the 19 services at once (staged changes). Requires:
+#   - the 19 GHCR packages PUBLIC (otherwise Railway can't pull the images)
+#   - filling in the <PLACEHOLDERS> (DOMAIN, B2, secrets) after the import
 #
-# MODELO: usa IMAGENS prontas (image:), NÃO builda Dockerfile. Cada imagem já
-# traz seu entrypoint/scripts embutidos — não há shell script externo.
+# MODEL: uses ready-made IMAGES (image:), does NOT build a Dockerfile. Each image
+# already ships its entrypoint/scripts baked in — there is no external shell script.
 #
-# NÃO incluídos (storage 100% Backblaze B2, ADR-015): objectstorage (MinIO),
-# seaweedfs. depends_on é só documentação (a Railway ignora; os serviços têm
-# restart on-failure e reconectam).
+# NOT included (object storage 100% Backblaze B2): objectstorage (MinIO),
+# seaweedfs. depends_on is documentation only (Railway ignores it; the services
+# have restart on-failure and reconnect).
 # ─────────────────────────────────────────────────────────────────────────────
 
 x-worker-env: &worker-env
@@ -52,13 +52,13 @@ x-b2-env: &b2-env
 
 services:
 
-  # ── Infra base ──────────────────────────────────────────────────────────
+  # ── Base infra ──────────────────────────────────────────────────────────
   db:
     image: ghcr.io/hashing3-technologies/posthog-railway/db:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     environment:
       POSTGRES_USER: posthog
       POSTGRES_DB: posthog
-      POSTGRES_PASSWORD: posthog   # <-- troque por segredo forte e propague nas DATABASE_URL
+      POSTGRES_PASSWORD: posthog   # <-- replace with a strong secret and propagate it across the DATABASE_URLs
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
@@ -83,11 +83,11 @@ services:
       - zookeeper-datalog:/datalog
       - zookeeper-logs:/logs
 
-  # ── Mensageria ──────────────────────────────────────────────────────────
-  # [VALIDAR] A imagem é confluentinc/cp-kafka, mas o compose oficial do PostHog
-  # usa Redpanda. Esta config é a padrão de cp-kafka single-node + zookeeper
-  # (NÃO vem da fonte). Se não subir, a decisão é alinhar a imagem `kafka` para
-  # Redpanda (como o kafka-init/rpk já assume).
+  # ── Messaging ──────────────────────────────────────────────────────────
+  # [NOTE] The image is confluentinc/cp-kafka, while PostHog's official compose
+  # uses Redpanda. This is the standard cp-kafka single-node + zookeeper config
+  # (NOT from the source). cp-kafka is what this template ships and runs;
+  # kafka-init uses rpk, which talks to any Kafka-protocol broker.
   kafka:
     image: ghcr.io/hashing3-technologies/posthog-railway/kafka:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     environment:
@@ -106,12 +106,12 @@ services:
       - kafka-data:/var/lib/kafka/data
     depends_on: [zookeeper]
 
-  # Job one-shot: cria os tópicos e encerra (pode acusar "crash" ao sair — ok).
+  # One-shot job: creates the topics and exits (may show as "crash" on exit — ok).
   kafka-init:
     image: ghcr.io/hashing3-technologies/posthog-railway/kafka-init:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     depends_on: [kafka]
 
-  # ── Orquestração ────────────────────────────────────────────────────────
+  # ── Orchestration ────────────────────────────────────────────────────────
   temporal:
     image: ghcr.io/hashing3-technologies/posthog-railway/temporal:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     environment:
@@ -124,7 +124,7 @@ services:
       ENABLE_ES: "false"
     depends_on: [db]
 
-  # ── App Django ──────────────────────────────────────────────────────────
+  # ── Django app ──────────────────────────────────────────────────────────
   web:
     image: ghcr.io/hashing3-technologies/posthog-railway/web:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     environment:
@@ -184,7 +184,7 @@ services:
       SECRET_KEY: <POSTHOG_SECRET>
     depends_on: [db, redis7, clickhouse, kafka, temporal]
 
-  # ── Captura / processamento (Rust/Go) ───────────────────────────────────
+  # ── Capture / processing (Rust/Go) ───────────────────────────────────
   capture:
     image: ghcr.io/hashing3-technologies/posthog-railway/capture:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     environment:
@@ -266,16 +266,17 @@ services:
       LIVESTREAM_JWT_SECRET: <POSTHOG_SECRET>
     depends_on: [kafka]
 
-  # ── Edge / proxy ────────────────────────────────────────────────────────
-  # [VALIDAR] Na Railway o TLS é no edge nativo. Avaliar manter o Caddy (rotea
-  # por path) OU expor web/capture/feature-flags/plugins/livestream via domínios
-  # nativos da Railway. Se mantido, precisa de CADDYFILE/CADDY_HOST/CADDY_TLS_BLOCK.
+  # ── Edge / proxy (optional) ──────────────────────────────────────────────
+  # On Railway, TLS is terminated at the native edge. Options (see
+  # docs/architecture.md -> D5): keep Caddy (path-based routing), expose
+  # web/capture/feature-flags/plugins/livestream via Railway native domains, or
+  # use an external reverse proxy. If kept, needs CADDYFILE/CADDY_HOST/CADDY_TLS_BLOCK.
   proxy:
     image: ghcr.io/hashing3-technologies/posthog-railway/proxy:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     environment:
       CADDY_HOST: "<DOMAIN>, http://, https://"
       CADDY_TLS_BLOCK: <TLS_BLOCK>
-      # CADDYFILE: <template Caddy completo — ver proxy.Dockerfile / compose oficial>
+      # CADDYFILE: <full Caddy template — see proxy.Dockerfile / official compose>
     volumes:
       - caddy-data:/data
       - caddy-config:/config
