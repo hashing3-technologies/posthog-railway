@@ -1,87 +1,98 @@
 # PostHog self-hosted — Railway Template (HASHING3)
 
-Template Railway, mantido pela **HASHING3 Technologies**, para subir **PostHog
-self-hosted** (analytics de produto open-source) em arquitetura de produção:
-~19 serviços isolados, **object storage 100% no Backblaze B2**, imagens
-**pinadas por digest `sha256`** e pipeline de build próprio.
+A Railway template, maintained by **HASHING3 Technologies**, to deploy
+**self-hosted PostHog** (the open-source product analytics platform) in a
+production-grade architecture: ~19 isolated services, **object storage 100% on
+Backblaze B2**, images **pinned by `sha256` digest**, and a dedicated build
+pipeline.
 
-> **Repo dedicado** (1 template = 1 repo, Dockerfiles na raiz). A **composição
-> dos serviços** (os ~19 containers, env, volumes, ligações) é definida na
-> **plataforma Railway** e publicada como template; este repo fornece os
-> Dockerfiles → o pipeline builda → as imagens vão pro GHCR → o template usa as
-> imagens (por digest).
+> **Dedicated repo** (1 template = 1 repo, Dockerfiles at the root). The
+> **service composition** (the ~19 containers, env, volumes, wiring) is defined
+> on the **Railway platform** and published as a template; this repo provides the
+> Dockerfiles → the pipeline builds them → the images are pushed to GHCR → the
+> template consumes the images (by digest).
 
-## Arquitetura — ~19 serviços (cada um é um container)
+## Architecture — ~19 services (each one a container)
 
-O PostHog moderno é uma arquitetura de múltiplas tecnologias, cada uma rodando
-como serviço isolado na Railway:
+Modern PostHog is a multi-technology architecture, each part running as an
+isolated service on Railway:
 
 - **App:** `web`, `worker`, `plugins`, `temporal-django-worker`
-- **Captura/processamento (Rust/Go):** `capture`, `replay-capture`, `feature-flags`,
+- **Capture / processing (Rust/Go):** `capture`, `replay-capture`, `feature-flags`,
   `property-defs-rs`, `cyclotron-janitor`, `cymbal` (error tracking), `livestream`
-- **Dados:** `db` (Postgres), `clickhouse` (OLAP), `redis7`
+- **Data:** `db` (Postgres), `clickhouse` (OLAP), `redis7`
 - **Streaming:** `kafka`, `zookeeper`, `kafka-init`
-- **Orquestração:** `temporal`
-- **Proxy:** `proxy` (Caddy)
-- **Object storage:** **externo (Backblaze B2)** — sem storage local embarcado
+- **Orchestration:** `temporal`
+- **Proxy:** `proxy` (Caddy) — **optional**; see the routing options in
+  [`docs/architecture.md`](docs/architecture.md)
+- **Object storage:** **external (Backblaze B2)** — no embedded local storage
 
-> **Footprint:** ClickHouse + Kafka + Zookeeper + Temporal são *always-on*.
-> Baseline oficial de self-host: ~4 vCPU / 16 GB RAM / 30 GB.
+> **Footprint:** ClickHouse + Kafka + Zookeeper + Temporal are *always-on*.
+> Official self-host baseline: ~4 vCPU / 16 GB RAM / 30 GB.
 
-## Como funciona o build
+## How the build works
 
-Os Dockerfiles dependem de arquivos do **source-code do PostHog** (configs, scripts
-`compose`, GeoIP) que não ficam no repo — por isso o build é **pré-buildado** no
-CI (não na Railway): o pipeline clona o source no commit-âncora, gera os scripts,
-e publica as 19 imagens em `ghcr.io/hashing3-technologies/posthog-railway/*`. A
-Railway então consome essas imagens prontas (por digest).
+The Dockerfiles depend on files from the **PostHog source code** (configs,
+`compose` scripts, GeoIP) that are not vendored in this repo — so the build is
+**pre-built** in CI (not on Railway): the pipeline clones the source at the
+anchor commit, generates the scripts, and publishes the 19 images to
+`ghcr.io/hashing3-technologies/posthog-railway/*`. Railway then consumes those
+ready-made images (by digest).
 
-| Caminho | O que é |
+| Path | What it is |
 |---|---|
-| `*.Dockerfile` (raiz) | 19 Dockerfiles, cada `FROM` cravado por `@sha256` |
-| `images.lock` | Fonte de verdade do digest pinning (imagem → digest + origem) |
-| `.env.example` | Referência de env vars (storage B2 + wiring de serviços) |
-| `tools/resolve-digests.sh` | Re-resolve digests da fonte primária / audita drift |
-| `docs/arquitetura.md` | Decisões de arquitetura do template (serviços, storage, pinning) |
-| `.github/workflows/build-images.yaml` | Build & publish das 19 imagens no GHCR |
+| `*.Dockerfile` (root) | 19 Dockerfiles, each `FROM` pinned by `@sha256` |
+| `images.lock` | Source of truth for digest pinning (image → digest + origin) |
+| `.env.example` | Reference for env vars (B2 storage + service wiring) |
+| `tools/resolve-digests.sh` | Re-resolves digests from the upstream source / audits drift |
+| `docs/architecture.md` | Template architecture decisions (services, storage, pinning, routing) |
+| `.github/workflows/build-images.yaml` | Build & publish the 19 images to GHCR |
 
-**Reprodutibilidade (ADR-014):** todo `FROM` é por digest `sha256` (nunca tag
-mutável). Para atualizar a âncora, rode `tools/resolve-digests.sh` (re-resolve da
-fonte; nunca cravar digest de memória) e atualize `images.lock` + o workflow.
+**Reproducibility:** every `FROM` is pinned by `sha256` digest (never a mutable
+tag), so an image can't change underneath the template. To bump the anchor, run
+`tools/resolve-digests.sh` (re-resolves from the source; never hardcode a digest
+from memory) and update `images.lock` + the workflow.
 
-## Object storage — 100% Backblaze B2 (ADR-015)
+## Object storage — 100% Backblaze B2
 
-Sem storage local: `OBJECT_STORAGE_*` (exports/cache) +
-`SESSION_RECORDING_V2_S3_*` (Session Replay, **ativo**) + `cymbal` (error
-tracking) apontam para o B2 (S3-compatible). Detalhes e notas de compatibilidade
-no [`.env.example`](.env.example). **Gate de aceite:** smoke test do replay → B2.
+No local storage: `OBJECT_STORAGE_*` (exports/cache) +
+`SESSION_RECORDING_V2_S3_*` (Session Replay, **enabled**) + `cymbal` (error
+tracking) all point to B2 (S3-compatible). Details and compatibility notes live
+in [`.env.example`](.env.example). **Acceptance check:** smoke-test the
+replay → B2 path before going live.
 
-## Secrets necessários no CI
+> Why external storage: keeping object storage off-cluster lets every stateful
+> service stay small and lets you scale storage independently. Any S3-compatible
+> backend works; this template is wired for Backblaze B2.
 
-Configure em **Settings → Secrets and variables → Actions**:
+## Required CI secrets
 
-| Secret | Valor |
+Configure them under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
 |---|---|
-| `DOCKERHUB_USERNAME` | usuário do Docker Hub (evita o `429` de pull anônimo) |
-| `DOCKERHUB_TOKEN` | Personal Access Token (escopo *Public Repo Read*) |
+| `DOCKERHUB_USERNAME` | Docker Hub username (avoids the anonymous-pull `429`) |
+| `DOCKERHUB_TOKEN` | Personal Access Token (*Public Repo Read* scope) |
 
-O GHCR usa o `GITHUB_TOKEN` automático.
+GHCR uses the automatic `GITHUB_TOKEN`.
 
-## Supply chain / segurança
+## Supply chain / security
 
-- **Digest pinning** (`@sha256`) — imutabilidade (a imagem não muda sob a tag).
-- **Trivy** report-only — relatório no log + SARIF no **Security tab** (não
-  bloqueia: o template empacota imagens de terceiros com CVEs upstream que não
-  controlamos; triagem via Security tab, não gate).
-- **Provenance SLSA** — o build gera `--attest type=provenance,mode=max`.
+- **Digest pinning** (`@sha256`) — immutability (the image can't change under the tag).
+- **Trivy** report-only — report in the log + SARIF in the **Security tab** (does
+  not block the build: the template packages third-party images with upstream CVEs
+  we don't control; triage via the Security tab instead of a hard gate).
+- **SLSA provenance** — the build emits `--attest type=provenance,mode=max`.
 
-> cosign nas imagens base não se aplica (PostHog/Docker/ClickHouse não publicam
-> assinatura cosign; verificado). A garantia de imutabilidade vem do digest pin.
+> cosign on the base images does not apply (PostHog/Docker/ClickHouse don't
+> publish cosign signatures; verified). The immutability guarantee comes from the
+> digest pin.
 
-## Deploy na Railway
+## Deploy on Railway
 
-1. Garantir os 19 packages GHCR **públicos** (Settings de cada package).
-2. Na Railway, compor o template: criar os 19 serviços usando
-   `ghcr.io/hashing3-technologies/posthog-railway/<serviço>`, com env
-   (incl. B2), volumes e ligações.
-3. Publicar como template + smoke test do Session Replay → B2.
+1. Make sure the 19 GHCR packages are **public** (each package's Settings) so
+   Railway can pull the images.
+2. On Railway, compose the template: create the 19 services using
+   `ghcr.io/hashing3-technologies/posthog-railway/<service>`, with env
+   (incl. B2), volumes and wiring. See [`docs/railway-composition.md`](docs/railway-composition.md).
+3. Publish as a template + smoke-test Session Replay → B2.
