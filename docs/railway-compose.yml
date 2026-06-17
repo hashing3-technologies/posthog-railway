@@ -266,21 +266,20 @@ services:
       LIVESTREAM_JWT_SECRET: <POSTHOG_SECRET>
     depends_on: [kafka]
 
-  # ── Edge / proxy (optional) ──────────────────────────────────────────────
-  # On Railway, TLS is terminated at the native edge. Options (see
-  # docs/architecture.md -> D5): keep Caddy (path-based routing), expose
-  # web/capture/feature-flags/plugins/livestream via Railway native domains, or
-  # use an external reverse proxy. If kept, needs CADDYFILE/CADDY_HOST/CADDY_TLS_BLOCK.
+  # ── Edge / proxy (template default) ──────────────────────────────────────
+  # Single-domain path-based routing = the one public entry point. On Railway,
+  # TLS is terminated at the native edge, so Caddy listens on :8080 with
+  # auto_https off — no TLS block / CADDY_HOST needed. Routing config is the
+  # versioned /Caddyfile at the repo root, pasted into the CADDYFILE env var.
+  # Alternatives (native domains / external proxy): docs/architecture.md -> D5.
   proxy:
     image: ghcr.io/hashing3-technologies/posthog-railway/proxy:9373a2b55081d3e711ad58bca060a6a9ab5d41a5
     environment:
-      CADDY_HOST: "<DOMAIN>, http://, https://"
-      CADDY_TLS_BLOCK: <TLS_BLOCK>
-      # CADDYFILE: <full Caddy template — see proxy.Dockerfile / official compose>
-    volumes:
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on: [web, livestream]
+      # Paste the full contents of /Caddyfile (repo root) here.
+      CADDYFILE: <contents of /Caddyfile>
+    # No volumes: TLS at the edge, so Caddy stores no certs (auto_https off).
+    # Expose via the Railway domain on port 8080 (custom domain = 1-step upgrade).
+    depends_on: [web, capture, feature-flags, livestream]
 
 volumes:
   postgres-data:
@@ -290,5 +289,3 @@ volumes:
   zookeeper-datalog:
   zookeeper-logs:
   kafka-data:
-  caddy-data:
-  caddy-config:
