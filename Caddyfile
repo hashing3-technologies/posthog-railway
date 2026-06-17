@@ -1,0 +1,118 @@
+# PostHog self-hosted — reference Caddyfile for the `proxy` service (HASHING3 template)
+#
+# WHAT THIS IS
+#   Single-domain, path-based reverse proxy that puts every PostHog ingress
+#   endpoint under ONE host. This is the "built-in Caddy proxy" option — see
+#   docs/architecture.md → D5 (Edge routing).
+#
+# HOW IT IS LOADED (no Caddyfile is baked into the image)
+#   proxy.Dockerfile runs:  echo "${CADDYFILE}" > /etc/caddy/Caddyfile && caddy run ...
+#   So on Railway you paste THIS file's contents into the `CADDYFILE` env var of
+#   the `proxy` service. This file is the versioned source of truth for that env.
+#
+# TLS / PORTS
+#   `auto_https off` + site address `:8080`: on Railway, TLS is terminated at the
+#   edge (the Railway domain), so Caddy only does plain-HTTP routing internally.
+#   `:8080` has no Host matcher, so it serves BOTH the native `*.up.railway.app`
+#   domain AND a custom domain with no edit — point the proxy's Railway domain at
+#   port 8080. Custom domain = a 1-step upgrade (add the domain, same Caddyfile).
+#
+# UPSTREAMS
+#   Short service names resolve on Railway's private network. Ports match
+#   docs/railway-composition.md: web 8000, capture 3000, capture-ai 3000,
+#   replay-capture 3000, feature-flags 3001, plugins 6738, livestream 8080.
+#   OPTIONAL: swap a hostname for a reference var to draw a canvas arrow, e.g.
+#   `${{Web.RAILWAY_PRIVATE_DOMAIN}}:8000` (Railway resolves the display name to
+#   the slug; works even when the name has a space, e.g. `${{Feature Flags...}}`).
+#
+# ORDER MATTERS
+#   `@capture-ai` (/i/v0/ai) MUST be handled BEFORE `@capture` (/i/v0/*) or the
+#   AI route gets swallowed by the broader capture matcher.
+
+{
+	auto_https off
+}
+
+:8080 {
+	@replay-capture {
+		path /s
+		path /s/
+		path /s/*
+	}
+
+	@capture-ai {
+		path /i/v0/ai
+		path /i/v0/ai/
+		path /i/v0/ai/*
+	}
+
+	@capture {
+		path /e
+		path /e/
+		path /e/*
+		path /i/v0
+		path /i/v0/
+		path /i/v0/*
+		path /batch
+		path /batch/
+		path /batch/*
+		path /capture
+		path /capture/
+		path /capture/*
+	}
+
+	@flags {
+		path /flags
+		path /flags/
+		path /flags/*
+	}
+
+	@webhooks {
+		path /public/webhooks
+		path /public/webhooks/
+		path /public/webhooks/*
+		path /public/m/
+		path /public/m/*
+	}
+
+	@livestream {
+		path /livestream
+		path /livestream/
+		path /livestream/*
+	}
+
+	handle @livestream {
+		uri strip_prefix /livestream
+		reverse_proxy livestream:8080 {
+			flush_interval -1
+		}
+	}
+
+	# capture-ai = LLM Observability (endpoint /i/v0/ai). Requires the `capture-ai`
+	# service (same image as `capture`, needs AI_S3_* object storage). If you do
+	# not run capture-ai, drop this block and /i/v0/ai falls through to @capture.
+	handle @capture-ai {
+		reverse_proxy capture-ai:3000
+	}
+
+	handle @capture {
+		reverse_proxy capture:3000
+	}
+
+	handle @replay-capture {
+		reverse_proxy replay-capture:3000
+	}
+
+	handle @flags {
+		reverse_proxy feature-flags:3001
+	}
+
+	handle @webhooks {
+		reverse_proxy plugins:6738
+	}
+
+	# Everything else (UI, API, /preflight, /i/v1/logs, ...) → web.
+	handle {
+		reverse_proxy web:8000
+	}
+}

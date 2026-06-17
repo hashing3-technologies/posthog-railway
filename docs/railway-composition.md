@@ -41,7 +41,8 @@ Railway has no real `depends_on`; respect the order when creating/starting. Most
 5. Django app:    web → worker → plugins → temporal-django-worker
 6. Rust/services: capture, replay-capture, property-defs-rs, cyclotron-janitor,
                   cymbal, feature-flags, livestream
-7. Edge:          proxy            (optional; depends on web + livestream)
+7. Edge:          proxy            (template default; routes to web + capture +
+                  feature-flags + livestream — bring it up last, once they exist)
 ```
 
 ---
@@ -177,7 +178,10 @@ LIVESTREAM_HOST=https://<DOMAIN>/livestream
 SECRET_KEY=<POSTHOG_SECRET>
 ENCRYPTION_SALT_KEYS=<ENCRYPTION_SALT_KEYS>
 USE_GRANIAN=true
-GRANIAN_WORKERS=2
+# 1, not 2: GRANIAN_WORKERS=2 (the compose default) did not boot reliably on
+# Railway in our runs (the service flapped on startup); =1 boots cleanly.
+# Prefer scaling out with replicas over in-process workers here.
+GRANIAN_WORKERS=1
 OPT_OUT_CAPTURE=false
 # storage → Backblaze B2 (see final section)
 OBJECT_STORAGE_ENABLED=true
@@ -191,6 +195,13 @@ SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY=<b2_application_key>
 - **Volume:** none.
 - **Ports:** `8000`
 - **depends_on:** `db`, `redis7`, `clickhouse`, `kafka`
+
+> **First boot is long (~2 min) — a 502 in that window is normal.** `web` runs
+> Django + ClickHouse migrations at startup before it serves; expect 502 / health
+> failures until they finish. Changing pids in the logs are the start-script
+> stages, **not** a crash-loop. Wait for `/preflight` → `200` before assuming
+> something is wrong. (After the first boot, restarts are fast — migrations are
+> already applied.)
 
 ## worker
 
@@ -380,20 +391,43 @@ FILTER_MODE=opt-out
 - **Volume:** none. **Ports:** none declared.
 - **depends_on:** `kafka-init` (done), `db`
 
-## proxy (Caddy) — optional
+## proxy (Caddy) — included (template default)
 
-> HTTP/TLS routing. **Optional** — see [`architecture.md` → D5 (Edge routing)](architecture.md#d5--edge-routing-how-posthog-is-exposed) for the three exposure options (built-in Caddy, Railway native domains, external reverse proxy) and their trade-offs. If you keep Caddy, its upstreams (`web:8000`, `capture:3000`, `replay-capture:3000`, `feature-flags:3001`, `plugins:6738`, `livestream:8080`) match the services in this runbook.
+> Single-domain, path-based reverse proxy = the one public entry point for
+> PostHog. See [`architecture.md` → D5 (Edge routing)](architecture.md#d5--edge-routing-how-posthog-is-exposed)
+> for the why and the two alternatives (Railway native domains, external proxy).
+> The routing config is the versioned [`Caddyfile`](../Caddyfile) at the repo
+> root; its upstreams (`web:8000`, `capture:3000`, `capture-ai:3000`,
+> `replay-capture:3000`, `feature-flags:3001`, `plugins:6738`, `livestream:8080`)
+> match the services in this runbook.
 
 - **Image:** `.../proxy:9373a2b...` *(upstream `caddy:2-alpine`)*
 - **Env:**
 ```env
-CADDY_TLS_BLOCK=<TLS_BLOCK>
-CADDY_HOST=<DOMAIN>, http://, https://
-CADDYFILE=<full Caddy template — comes from base>
+# Paste the full contents of /Caddyfile (repo root) into this one var.
+# The image bakes no Caddyfile: proxy.Dockerfile writes ${CADDYFILE} to disk
+# and runs Caddy. No TLS block / CADDY_HOST needed — Railway terminates TLS at
+# the edge and the Caddyfile listens on :8080 with auto_https off.
+CADDYFILE=<contents of /Caddyfile>
 ```
-- **Volumes:** `caddy-data`→`/data`, `caddy-config`→`/config`
-- **Ports:** `80`, `443`
-- **depends_on:** `web`, `livestream`
+- **Volumes:** none — TLS is terminated at the Railway edge, so Caddy stores no
+  certs (no `/data` / `/config` persistence needed in this mode).
+- **Ports:** `8080` (generate the Railway domain pointing at port **8080**).
+- **depends_on:** `web`, `capture`, `feature-flags`, `livestream` (and
+  `capture-ai` / `replay-capture` / `plugins` once those are up).
+
+**Exposing it (two modes, same Caddyfile — see D5.1):**
+
+1. **Native domain (default):** generate the proxy's Railway domain on port 8080
+   → PostHog is live at `https://<proxy>.up.railway.app`. Set `SITE_URL` and
+   `LIVESTREAM_HOST` (on `web`) to that URL.
+2. **Custom domain (1-step upgrade):** add your domain to this same `proxy`
+   service (Railway issues the cert) and update `SITE_URL` / `LIVESTREAM_HOST`.
+   No Caddyfile edit — `:8080` already accepts any Host.
+
+> **Tip:** to draw the proxy→upstream arrows on the canvas, optionally replace
+> each hostname in the Caddyfile with a reference var, e.g.
+> `${{Web.RAILWAY_PRIVATE_DOMAIN}}:8000`. Same routing, just visible wiring.
 
 ---
 
@@ -492,7 +526,11 @@ Replacement map (original compose → B2):
 **Deploy decisions (your call):**
 
 1. **B2 bucket/region** — `web/worker/plugins` don't receive an explicit bucket/region in the compose (only `cymbal` does). Set `OBJECT_STORAGE_BUCKET` + `OBJECT_STORAGE_REGION` at deploy time; use the same bucket for all.
-2. **proxy / routing** — see [`architecture.md` → D5 (Edge routing)](architecture.md#d5--edge-routing-how-posthog-is-exposed). In short: keep Caddy for single-domain path-based routing, use Railway native domains, or route from an external proxy (e.g. Cloudflare). Decide before publishing.
+2. **proxy / routing** — **decided: the template keeps the built-in Caddy proxy as
+   the default** (single-domain path-based routing on the native Railway domain;
+   custom domain is a 1-step upgrade). See [`architecture.md` → D5 (Edge routing)](architecture.md#d5--edge-routing-how-posthog-is-exposed)
+   and D5.1 for the two proxy modes and the alternatives (native domains or an
+   external proxy like Cloudflare) if you choose to drop Caddy.
 3. **Postgres password** — replace `posthog` with a strong secret (propagate across every connection string).
 
 **Acceptance check:** after bringing it up, record one **Session Replay** and play it back, confirming the objects land in the **B2** bucket (validates replay v2 multipart against B2).

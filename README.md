@@ -23,8 +23,10 @@ isolated service on Railway:
 - **Data:** `db` (Postgres), `clickhouse` (OLAP), `redis7`
 - **Streaming:** `kafka`, `zookeeper`, `kafka-init`
 - **Orchestration:** `temporal`
-- **Proxy:** `proxy` (Caddy) — **optional**; see the routing options in
-  [`docs/architecture.md`](docs/architecture.md)
+- **Proxy:** `proxy` (Caddy) — **included & ready**: single-domain entry point,
+  runs on the native Railway domain out of the box, custom domain is a 1-step
+  upgrade. Configured by the root [`Caddyfile`](Caddyfile); routing options and
+  trade-offs in [`docs/architecture.md`](docs/architecture.md) (D5)
 - **Object storage:** **external (Backblaze B2)** — no embedded local storage
 
 > **Footprint:** ClickHouse + Kafka + Zookeeper + Temporal are *always-on*.

@@ -76,19 +76,42 @@ the template is wired for B2.
 
 ### D5 — Edge routing (how PostHog is exposed)
 PostHog has several services that receive external traffic (`web`, `capture`,
-`feature-flags`, `livestream`). There are three ways to expose them; the `proxy`
-service is **optional** and only used by the first one.
+`feature-flags`, `livestream`). The template **ships the `proxy` service included
+and working** (built-in Caddy), so a fresh import has a single entry point out of
+the box. The two alternatives below stay documented for teams that prefer them.
 
 | Option | How | Pros | Cons |
 |---|---|---|---|
-| **Built-in Caddy proxy** (`proxy`) | One public domain, path-based: `/` → web, `/i/` `/e/` → capture, `/flags` → feature-flags, `/livestream` → livestream | Single domain; ad-blocker resistant (ingestion served under your own domain); simpler cookies/CORS | Needs a custom domain; on Railway TLS is terminated at the edge, so Caddy runs with `auto_https off` |
+| **Built-in Caddy proxy** (`proxy`) — *template default* | One entry point, path-based: `/` → web, `/i/` `/e/` `/batch` → capture, `/i/v0/ai` → capture-ai, `/s` → replay-capture, `/flags` → feature-flags, `/public/webhooks` → plugins, `/livestream` → livestream | Single domain; ad-blocker resistant (ingestion served under your own domain); simpler cookies/CORS; one snippet host | +1 service to run; on Railway, TLS is terminated at the edge, so Caddy runs `auto_https off` on `:8080` |
 | **Railway native domains** | Expose `web` / `capture` / `feature-flags` / `livestream` each via its own `*.up.railway.app` or custom domain | Simplest; automatic TLS; no proxy to maintain | Multiple hosts; the PostHog snippet must set `api_host` (capture) and `ui_host` (web) separately; obvious capture hosts are easier for ad-blockers to block |
 | **External reverse proxy** (e.g. Cloudflare Workers / your CDN) | Route the same paths to the internal services from your own edge | Single-domain + anti-adblock benefits, one less service on Railway | Requires an external edge you already operate |
 
-**Recommendation:** for production, prefer a reverse proxy (built-in Caddy or
-external) so the ingestion endpoint sits under your own domain and survives
-ad-blockers, which silently drop a meaningful share of events. Drop the `proxy`
-service if you pick native domains or an external proxy.
+**Recommendation:** keep the built-in Caddy proxy (the default). The ingestion
+endpoint then sits under your own domain and survives ad-blockers, which silently
+drop a meaningful share of events. Drop the `proxy` service only if you
+deliberately pick native domains or an external edge.
+
+#### D5.1 — Proxy: native domain vs. custom domain (two modes, one Caddyfile)
+The proxy is configured by the [`Caddyfile`](../Caddyfile) at the repo root,
+loaded into the `proxy` service as the `CADDYFILE` env var (the image bakes no
+Caddyfile — `proxy.Dockerfile` writes the env var to disk and runs Caddy). The
+site address is `:8080` with **no Host matcher**, which means the **same
+Caddyfile serves both modes without an edit**:
+
+- **Mode A — native domain (default, zero config):** generate the proxy's Railway
+  domain pointing at **port 8080**. PostHog is immediately reachable at
+  `https://<proxy>.up.railway.app`. Set `SITE_URL` / `LIVESTREAM_HOST` (on `web`)
+  to that URL.
+- **Mode B — custom domain (1-step upgrade):** add your domain to the **same
+  `proxy` service** (Railway issues the TLS cert at the edge) and update
+  `SITE_URL` / `LIVESTREAM_HOST`. No Caddyfile change — `:8080` already accepts
+  any Host.
+
+Because Railway terminates TLS at the edge, the Caddyfile keeps `auto_https off`
+and never needs a TLS block or cert config. Optionally, swap the upstream
+hostnames in the Caddyfile for reference vars
+(`${{Web.RAILWAY_PRIVATE_DOMAIN}}:8000`, …) to draw the dependency arrows on the
+Railway canvas — functionally identical, purely a wiring-visibility choice.
 
 ## Accepted risks
 
